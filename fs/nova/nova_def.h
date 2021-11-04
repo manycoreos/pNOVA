@@ -1,3 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// pNOVA part written by June-hyung Kim
+// Major modified : Define NUMA_NOVA and PERCORE
+// To publish the pNOVA, Updated by Hongsu Byun
+// SPDX-FileCopyrightText: Copyright (c) 2021 Sogang University
+
 /*
  * FILE NAME include/linux/nova_fs.h
  *

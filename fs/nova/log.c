@@ -1,3 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// pNOVA part written by June-hyung Kim
+// Major modified : Added pnova_append_log_entry(), pnova_append_file_write_entry()
+// 	pnova_initialize_inode_log(), pnova_extend_inode_log(), pnova_get_append_head() functions.
+// To publish the pNOVA, Updated by Hongsu Byun
+// SPDX-FileCopyrightText: Copyright (c) 2021 Sogang University
+
 /*
  * BRIEF DESCRIPTION
  *

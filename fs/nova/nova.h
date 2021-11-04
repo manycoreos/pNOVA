@@ -1,3 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// pNOVA part written by June-hyung Kim
+// Major modified : Added data structure for pNOVA
+// To publish the pNOVA, Updated by Hongsu Byun
+// SPDX-FileCopyrightText: Copyright (c) 2021 Sogang University
+
 /*
  * BRIEF DESCRIPTION
  *

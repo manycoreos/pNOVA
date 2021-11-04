@@ -1,3 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// Per-core Logging part of pNOVA written by June-hyung Kim
+// Major modified : Added nova_init_local_log() fuunction.
+// To publish the pNOVA, Updated by Hongsu Byun
+// SPDX-FileCopyrightText: Copyright (c) 2021 Sogang University
+
 /*
  * NOVA Recovery routines.
  *

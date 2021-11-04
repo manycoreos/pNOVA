@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// pNOVA part written by June-hyung Kim
+// To publish the pNOVA, Updated by Hongsu Byun
+// SPDX-FileCopyrightText: Copyright (c) 2021 Sogang University
+
 #ifndef __LOG_H
 #define __LOG_H
 

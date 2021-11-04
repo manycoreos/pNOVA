@@ -1,3 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// Per-core Logging part of pNOVA written by June-hyung Kim
+// Major modified : Added pnova_inode_log_thorough_gc(), pnova_inode_log_fast_gc() functions.
+// To publish the pNOVA, Updated by Hongsu Byun
+// SPDX-FileCopyrightText: Copyright (c) 2021 Sogang University
+
 /*
  * BRIEF DESCRIPTION
  *

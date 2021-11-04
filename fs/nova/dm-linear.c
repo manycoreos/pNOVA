@@ -1,3 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// NVM device mapper part of pNOVA written by June-hyung Kim
+// This is for a machine that has two NVMs.
+// To publish the pNOVA, Updated by Hongsu Byun
+// SPDX-FileCopyrightText: Copyright (c) 2021 Sogang University
+
 #include "dm-linear.h"
 
 void nova_get_multi_nvmm_info(struct super_block *sb, struct nova_sb_info *sbi)

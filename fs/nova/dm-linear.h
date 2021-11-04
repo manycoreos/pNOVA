@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// NVM device mapper part of pNOVA written by June-hyung Kim
+// To publish the pNOVA, Updated by Hongsu Byun
+// SPDX-FileCopyrightText: Copyright (c) 2021 Sogang University
+
 #ifndef __DM_LINEAR_H
 #define __DM_LINEAR_H
 

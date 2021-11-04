@@ -1,3 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// Modified by June-hyung Kim
+// Major modified : Few bug fix for pNOVA
+// To publish the pNOVA, Updated by Hongsu Byun
+// SPDX-FileCopyrightText: Copyright (c) 2021 Sogang University
+:
 /*
  * BRIEF DESCRIPTION
  *
