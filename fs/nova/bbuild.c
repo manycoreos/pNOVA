@@ -34,9 +34,21 @@
 #include "inode.h"
 #include "log.h"
 
+
+/*TODO: Add & Call de-allocate function about local log*/
+static void nova_init_local_log(struct nova_inode_info_header *sih, int num)
+{
+	struct local_log *new_log_block;
+	new_log_block = kzalloc(sizeof(struct local_log),GFP_KERNEL);
+	new_log_block->core = num;
+	new_log_block->head = new_log_block->tail = 0;
+	new_log_block->log_pages = 0;
+	sih->global_log->local_log[num] = new_log_block;
+}
 void nova_init_header(struct super_block *sb,
 	struct nova_inode_info_header *sih, u16 i_mode)
 {
+	int i;
 	sih->log_pages = 0;
 	sih->i_size = 0;
 	sih->ino = 0;
@@ -61,6 +73,16 @@ void nova_init_header(struct super_block *sb,
 	sih->alter_log_head = 0;
 	sih->alter_log_tail = 0;
 	sih->i_blk_type = NOVA_DEFAULT_BLOCK_TYPE;
+
+#ifdef PERCORE	
+	sih->global_log = kzalloc(sizeof(struct global_log), GFP_KERNEL);
+	/* 56 = # of CPU cores */
+	for(i=0; i<56; i++){
+		sih->global_log->local_log[i] = 0;
+		nova_init_local_log(sih, i);
+	}
+#endif
+
 }
 
 static inline void set_scan_bm(unsigned long bit,
@@ -365,7 +387,6 @@ static u64 nova_append_range_node_entry(struct super_block *sb,
 	u64 curr_p;
 	size_t size = sizeof(struct nova_range_node_lowhigh);
 	struct nova_range_node_lowhigh *entry;
-	unsigned long irq_flags = 0;
 
 	curr_p = tail;
 
@@ -384,12 +405,12 @@ static u64 nova_append_range_node_entry(struct super_block *sb,
 		curr_p = next_log_page(sb, curr_p);
 
 	entry = (struct nova_range_node_lowhigh *)nova_get_block(sb, curr_p);
-	nova_memunlock_range(sb, entry, size, &irq_flags);
+	nova_memunlock_range(sb, entry, size);
 	entry->range_low = cpu_to_le64(curr->range_low);
 	if (cpuid)
 		entry->range_low |= cpu_to_le64(cpuid << 56);
 	entry->range_high = cpu_to_le64(curr->range_high);
-	nova_memlock_range(sb, entry, size, &irq_flags);
+	nova_memlock_range(sb, entry, size);
 	nova_dbgv("append entry block low 0x%lx, high 0x%lx\n",
 			curr->range_low, curr->range_high);
 
@@ -444,7 +465,6 @@ void nova_save_inode_list_to_log(struct super_block *sb)
 	u64 temp_tail;
 	u64 new_block;
 	int allocated;
-	unsigned long irq_flags = 0;
 
 	sih.ino = NOVA_INODELIST_INO;
 	sih.i_blk_type = NOVA_DEFAULT_BLOCK_TYPE;
@@ -473,12 +493,12 @@ void nova_save_inode_list_to_log(struct super_block *sb)
 				&inode_map->inode_inuse_tree, temp_tail, i);
 	}
 
-	nova_memunlock_inode(sb, pi, &irq_flags);
+	nova_memunlock_inode(sb, pi);
 	pi->alter_log_head = pi->alter_log_tail = 0;
 	pi->log_head = new_block;
 	nova_update_tail(pi, temp_tail);
 	nova_flush_buffer(&pi->log_head, CACHELINE_SIZE, 0);
-	nova_memlock_inode(sb, pi, &irq_flags);
+	nova_memlock_inode(sb, pi);
 
 	nova_dbg("%s: %lu inode nodes, pi head 0x%llx, tail 0x%llx\n",
 		__func__, num_nodes, pi->log_head, pi->log_tail);
@@ -496,7 +516,6 @@ void nova_save_blocknode_mappings_to_log(struct super_block *sb)
 	u64 new_block = 0;
 	u64 temp_tail;
 	int i;
-	unsigned long irq_flags = 0;
 
 	sih.ino = NOVA_BLOCKNODE_INO;
 	sih.i_blk_type = NOVA_DEFAULT_BLOCK_TYPE;
@@ -525,12 +544,12 @@ void nova_save_blocknode_mappings_to_log(struct super_block *sb)
 		temp_tail = nova_save_free_list_blocknodes(sb, i, temp_tail);
 
 	/* Finally update log head and tail */
-	nova_memunlock_inode(sb, pi, &irq_flags);
+	nova_memunlock_inode(sb, pi);
 	pi->alter_log_head = pi->alter_log_tail = 0;
 	pi->log_head = new_block;
 	nova_update_tail(pi, temp_tail);
 	nova_flush_buffer(&pi->log_head, CACHELINE_SIZE, 0);
-	nova_memlock_inode(sb, pi, &irq_flags);
+	nova_memlock_inode(sb, pi);
 
 	nova_dbg("%s: %lu blocknodes, %lu log pages, pi head 0x%llx, tail 0x%llx\n",
 		  __func__, num_blocknode, num_pages,
@@ -666,7 +685,7 @@ static int nova_build_blocknode_map(struct super_block *sb,
 				(initsize >> (PAGE_SHIFT + 0x3));
 
 	/* Alloc memory to hold the block alloc bitmap */
-	final_bm->scan_bm_4K.bitmap = kvzalloc(final_bm->scan_bm_4K.bitmap_size,
+	final_bm->scan_bm_4K.bitmap = kzalloc(final_bm->scan_bm_4K.bitmap_size,
 							GFP_KERNEL);
 
 	if (!final_bm->scan_bm_4K.bitmap) {
@@ -703,7 +722,7 @@ static int nova_build_blocknode_map(struct super_block *sb,
 	ret = __nova_build_blocknode_map(sb, final_bm->scan_bm_4K.bitmap,
 			final_bm->scan_bm_4K.bitmap_size * 8, PAGE_SHIFT - 12);
 
-	kvfree(final_bm->scan_bm_4K.bitmap);
+	kfree(final_bm->scan_bm_4K.bitmap);
 	kfree(final_bm);
 
 	return ret;
@@ -718,9 +737,9 @@ static void free_bm(struct super_block *sb)
 	for (i = 0; i < sbi->cpus; i++) {
 		bm = global_bm[i];
 		if (bm) {
-			kvfree(bm->scan_bm_4K.bitmap);
-			kvfree(bm->scan_bm_2M.bitmap);
-			kvfree(bm->scan_bm_1G.bitmap);
+			kfree(bm->scan_bm_4K.bitmap);
+			kfree(bm->scan_bm_2M.bitmap);
+			kfree(bm->scan_bm_1G.bitmap);
 			kfree(bm);
 		}
 	}
@@ -747,11 +766,11 @@ static int alloc_bm(struct super_block *sb, unsigned long initsize)
 				(initsize >> (PAGE_SHIFT_1G + 0x3));
 
 		/* Alloc memory to hold the block alloc bitmap */
-		bm->scan_bm_4K.bitmap = kvzalloc(bm->scan_bm_4K.bitmap_size,
+		bm->scan_bm_4K.bitmap = kzalloc(bm->scan_bm_4K.bitmap_size,
 							GFP_KERNEL);
-		bm->scan_bm_2M.bitmap = kvzalloc(bm->scan_bm_2M.bitmap_size,
+		bm->scan_bm_2M.bitmap = kzalloc(bm->scan_bm_2M.bitmap_size,
 							GFP_KERNEL);
-		bm->scan_bm_1G.bitmap = kvzalloc(bm->scan_bm_1G.bitmap_size,
+		bm->scan_bm_1G.bitmap = kzalloc(bm->scan_bm_1G.bitmap_size,
 							GFP_KERNEL);
 
 		if (!bm->scan_bm_4K.bitmap || !bm->scan_bm_2M.bitmap ||
@@ -1049,14 +1068,8 @@ again:
 	curr_p = pi->log_head;
 	nova_dbg_verbose("Log head 0x%llx, tail 0x%llx\n",
 				curr_p, pi->log_tail);
-	if (curr_p == 0 || pi->log_tail == 0) {
-		nova_warn("NULL log pointer(s) in file inode %llu\n", ino);
-		pi->log_head = 0;
-		pi->log_tail = 0;
-		nova_flush_buffer(pi, sizeof(struct nova_inode), 1);
+	if (curr_p == 0 && pi->log_tail == 0)
 		return 0;
-	}
-
 
 	if (base == 0) {
 		BUG_ON(curr_p & (PAGE_SIZE - 1));

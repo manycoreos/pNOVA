@@ -121,6 +121,10 @@ static int nova_get_nvmm_info(struct super_block *sb,
 	struct dax_device *dax_dev;
 	int ret;
 
+#ifdef NUMA_NOVA
+	nova_get_multi_nvmm_info(sb,sbi);
+
+#else 
 	ret = bdev_dax_supported(sb->s_bdev, PAGE_SIZE);
 	nova_dbg_verbose("%s: dax_supported = %d; bdev->super=0x%p",
 			 __func__, ret, sb->s_bdev->bd_super);
@@ -161,6 +165,7 @@ static int nova_get_nvmm_info(struct super_block *sb,
 	nova_dbg("%s: dev %s, phys_addr 0x%llx, virt_addr 0x%lx, size %ld\n",
 		__func__, sbi->s_bdev->bd_disk->disk_name,
 		sbi->phys_addr, (unsigned long)sbi->virt_addr, sbi->initsize);
+#endif
 
 	return 0;
 }
@@ -343,9 +348,8 @@ inline void nova_sync_super(struct super_block *sb)
 	struct nova_sb_info *sbi = NOVA_SB(sb);
 	struct nova_super_block *super = nova_get_super(sb);
 	struct nova_super_block *super_redund;
-	unsigned long irq_flags = 0;
 
-	nova_memunlock_super(sb, &irq_flags);
+	nova_memunlock_super(sb);
 
 	super_redund = nova_get_redund_super(sb);
 
@@ -357,7 +361,7 @@ inline void nova_sync_super(struct super_block *sb)
 		sizeof(struct nova_super_block));
 	PERSISTENT_BARRIER();
 
-	nova_memlock_super(sb, &irq_flags);
+	nova_memlock_super(sb);
 }
 
 /* Update checksum for the DRAM copy */
@@ -397,7 +401,6 @@ static struct nova_inode *nova_init(struct super_block *sb,
 	struct nova_sb_info *sbi = NOVA_SB(sb);
 	struct nova_inode_update update;
 	u64 epoch_id;
-	unsigned long irq_flags = 0;
 	INIT_TIMING(init_time);
 
 	NOVA_START_TIMING(new_init_t, init_time);
@@ -417,7 +420,7 @@ static struct nova_inode *nova_init(struct super_block *sb,
 
 	super = nova_get_super(sb);
 
-	nova_memunlock_reserved(sb, super, &irq_flags);
+	nova_memunlock_reserved(sb, super);
 	/* clear out super-block and inode table */
 	memset_nt(super, 0, sbi->head_reserved_blocks * sbi->blocksize);
 
@@ -432,7 +435,7 @@ static struct nova_inode *nova_init(struct super_block *sb,
 	memset(&update, 0, sizeof(struct nova_inode_update));
 	nova_update_inode(sb, &sbi->snapshot_si->vfs_inode, pi, &update, 1);
 
-	nova_memlock_reserved(sb, super, &irq_flags);
+	nova_memlock_reserved(sb, super);
 
 	nova_init_blockmap(sb, 0);
 
@@ -462,7 +465,7 @@ static struct nova_inode *nova_init(struct super_block *sb,
 	root_i = nova_get_inode_by_ino(sb, NOVA_ROOT_INO);
 	nova_dbgv("%s: Allocate root inode @ 0x%p\n", __func__, root_i);
 
-	nova_memunlock_inode(sb, root_i, &irq_flags);
+	nova_memunlock_inode(sb, root_i);
 	root_i->i_mode = cpu_to_le16(sbi->mode | S_IFDIR);
 	root_i->i_uid = cpu_to_le32(from_kuid(&init_user_ns, sbi->uid));
 	root_i->i_gid = cpu_to_le32(from_kgid(&init_user_ns, sbi->gid));
@@ -476,7 +479,7 @@ static struct nova_inode *nova_init(struct super_block *sb,
 	root_i->valid = 1;
 	/* nova_sync_inode(root_i); */
 	nova_flush_buffer(root_i, sizeof(*root_i), false);
-	nova_memlock_inode(sb, root_i, &irq_flags);
+	nova_memlock_inode(sb, root_i);
 
 	epoch_id = nova_get_epoch_id(sb);
 	nova_append_dir_init_entries(sb, root_i, NOVA_ROOT_INO,
@@ -776,14 +779,8 @@ setup_sb:
 	/* If the FS was not formatted on this mount, scan the meta-data after
 	 * truncate list has been processed
 	 */
-	if ((sbi->s_mount_opt & NOVA_MOUNT_FORMAT) == 0) {
-		retval = nova_recovery(sb);
-		if (retval < 0) {
-			nova_err(sb, "%s: nova recovery failed with return code %d\n",
-				__func__, retval);
-			goto out;
-		}
-	}
+	if ((sbi->s_mount_opt & NOVA_MOUNT_FORMAT) == 0)
+		nova_recovery(sb);
 
 	root_i = nova_iget(sb, NOVA_ROOT_INO);
 	if (IS_ERR(root_i)) {

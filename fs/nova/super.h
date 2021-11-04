@@ -215,4 +215,9 @@ extern void nova_update_super_crc(struct super_block *sb);
 extern void nova_sync_super(struct super_block *sb);
 
 struct snapshot_info *nova_alloc_snapshot_info(struct super_block *sb);
+
+
+void nova_get_multi_nvmm_info(struct super_block *sb, struct nova_sb_info *sbi);
+u64 nova_get_addr_off_for_NUMA(struct nova_sb_info *sbi, void *addr);
+void *nova_get_block_for_NUMA(struct super_block *sb, u64 block);
 #endif

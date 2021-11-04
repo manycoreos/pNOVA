@@ -55,9 +55,8 @@ static inline int nova_handle_partial_block(struct super_block *sb,
 {
 	struct nova_sb_info *sbi = NOVA_SB(sb);
 	struct nova_file_write_entry *entryc, entry_copy;
-	unsigned long irq_flags = 0;
 
-	nova_memunlock_block(sb, kmem, &irq_flags);
+	nova_memunlock_block(sb, kmem);
 	if (entry == NULL) {
 		/* Fill zero */
 		if (support_clwb)
@@ -79,7 +78,7 @@ static inline int nova_handle_partial_block(struct super_block *sb,
 					offset, length, kmem);
 
 	}
-	nova_memlock_block(sb, kmem, &irq_flags);
+	nova_memlock_block(sb, kmem);
 	if (support_clwb)
 		nova_flush_buffer(kmem + offset, length, 0);
 	return 0;
@@ -155,6 +154,51 @@ int nova_reassign_file_tree(struct super_block *sb,
 	entryc = (metadata_csum == 0) ? entry : &entry_copy;
 
 	while (curr_p && curr_p != sih->log_tail) {
+		if (is_last_entry(curr_p, entry_size))
+			curr_p = next_log_page(sb, curr_p);
+
+		if (curr_p == 0) {
+			nova_err(sb, "%s: File inode %lu log is NULL!\n",
+				__func__, sih->ino);
+			return -EINVAL;
+		}
+
+		addr = (void *) nova_get_block(sb, curr_p);
+		entry = (struct nova_file_write_entry *) addr;
+
+		if (metadata_csum == 0)
+			entryc = entry;
+		else if (!nova_verify_entry_csum(sb, entry, entryc))
+			return -EIO;
+
+		if (nova_get_entry_type(entryc) != FILE_WRITE) {
+			nova_dbg("%s: entry type is not write? %d\n",
+				__func__, nova_get_entry_type(entry));
+			curr_p += entry_size;
+			continue;
+		}
+
+		nova_assign_write_entry(sb, sih, entry, entryc, true);
+		curr_p += entry_size;
+	}
+
+	return 0;
+}
+
+/* Per-Core Log Version */
+/* Make different version to separate the workflow just for writing files */
+int pnova_reassign_file_tree(struct super_block *sb,
+	struct nova_inode_info_header *sih, u64 begin_tail, struct local_log *my_local_log)
+{
+	void *addr;
+	struct nova_file_write_entry *entry;
+	struct nova_file_write_entry *entryc, entry_copy;
+	u64 curr_p = begin_tail;
+	size_t entry_size = sizeof(struct nova_file_write_entry);
+
+	entryc = (metadata_csum == 0) ? entry : &entry_copy;
+
+	while (curr_p && curr_p != my_local_log->tail) {
 		if (is_last_entry(curr_p, entry_size))
 			curr_p = next_log_page(sb, curr_p);
 
@@ -588,7 +632,6 @@ ssize_t do_nova_inplace_file_write(struct file *filp,
 	u64 file_size;
 	u32 time;
 	ssize_t ret;
-	unsigned long irq_flags = 0;
 
 
 	if (len == 0)
@@ -698,10 +741,10 @@ ssize_t do_nova_inplace_file_write(struct file *filp,
 		/* Now copy from user buf */
 //		nova_dbg("Write: %p\n", kmem);
 		NOVA_START_TIMING(memcpy_w_nvmm_t, memcpy_time);
-		nova_memunlock_range(sb, kmem + offset, bytes, &irq_flags);
+		nova_memunlock_range(sb, kmem + offset, bytes);
 		copied = bytes - memcpy_to_pmem_nocache(kmem + offset,
 						buf, bytes);
-		nova_memlock_range(sb, kmem + offset, bytes, &irq_flags);
+		nova_memlock_range(sb, kmem + offset, bytes);
 		NOVA_END_TIMING(memcpy_w_nvmm_t, memcpy_time);
 
 		if (data_csum > 0 || data_parity > 0) {
@@ -776,9 +819,9 @@ ssize_t do_nova_inplace_file_write(struct file *filp,
 	inode->i_blocks = sih->i_blocks;
 
 	if (update_log) {
-		nova_memunlock_inode(sb, pi, &irq_flags);
+		nova_memunlock_inode(sb, pi);
 		nova_update_inode(sb, inode, pi, &update, 1);
-		nova_memlock_inode(sb, pi, &irq_flags);
+		nova_memlock_inode(sb, pi);
 		NOVA_STATS_ADD(inplace_new_blocks, 1);
 
 		/* Update file tree */
@@ -894,7 +937,6 @@ static int nova_dax_get_blocks(struct inode *inode, sector_t iblock,
 	int locked = 0;
 	int check_next = 1;
 	int ret = 0;
-	unsigned long irq_flags = 0;
 	INIT_TIMING(get_block_time);
 
 	if (max_blocks == 0)
@@ -974,9 +1016,9 @@ again:
 	data_bits = blk_type_to_shift[sih->i_blk_type];
 	sih->i_blocks += (num_blocks << (data_bits - sb->s_blocksize_bits));
 
-	nova_memunlock_inode(sb, pi, &irq_flags);
+	nova_memunlock_inode(sb, pi);
 	nova_update_inode(sb, inode, pi, &update, 1);
-	nova_memlock_inode(sb, pi, &irq_flags);
+	nova_memlock_inode(sb, pi);
 
 	ret = nova_reassign_file_tree(sb, sih, update.curr_entry);
 	if (ret) {
@@ -1138,7 +1180,6 @@ static int nova_append_write_mmap_to_log(struct super_block *sb,
 	unsigned long num_pages;
 	u64 epoch_id;
 	int ret;
-	unsigned long irq_flags = 0;
 
 	/* Only for csum and parity update */
 	if (data_csum == 0 && data_parity == 0)
@@ -1166,9 +1207,9 @@ static int nova_append_write_mmap_to_log(struct super_block *sb,
 		goto out;
 	}
 
-	nova_memunlock_inode(sb, pi, &irq_flags);
+	nova_memunlock_inode(sb, pi);
 	nova_update_inode(sb, inode, pi, &update, 1);
-	nova_memlock_inode(sb, pi, &irq_flags);
+	nova_memlock_inode(sb, pi);
 out:
 	return ret;
 }

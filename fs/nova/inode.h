@@ -3,9 +3,11 @@
 
 struct nova_inode_info_header;
 struct nova_inode;
+struct local_log;
 
 #include "super.h"
 #include "log.h"
+#include "nova_def.h"
 
 enum nova_new_inode_type {
 	TYPE_CREATE = 0,
@@ -14,6 +16,19 @@ enum nova_new_inode_type {
 	TYPE_MKDIR
 };
 
+/* Structure of Per-Core Log */
+struct global_log {
+	/* 56 = # of CPU cores */
+	struct local_log *local_log[56];
+};
+
+struct local_log {
+	u64 head;
+	u64 tail;
+	int core;
+	int log_pages;
+	int padding[10];
+};
 
 /*
  * Structure of an inode in PMEM
@@ -99,6 +114,8 @@ struct nova_inode_info_header {
 	u64 alter_log_head;		/* Alternate log head pointer */
 	u64 alter_log_tail;		/* Alternate log tail pointer */
 	u8  i_blk_type;
+
+	struct global_log *global_log;
 };
 
 /* For rebuild purpose, temporarily store pi infomation */
@@ -178,13 +195,12 @@ static inline int nova_update_inode_checksum(struct nova_inode *pi)
 	u32 crc = 0;
 
 	if (metadata_csum == 0)
-		goto persist;
+		return 0;
 
 	crc = nova_crc32c(~0, (__u8 *)pi,
 			(sizeof(struct nova_inode) - sizeof(__le32)));
 
 	pi->csum = crc;
-persist:
 	nova_flush_buffer(pi, sizeof(struct nova_inode), 1);
 	return 0;
 }
@@ -237,7 +253,6 @@ static inline void nova_update_alter_tail(struct nova_inode *pi, u64 new_tail)
 }
 
 
-
 /* Update inode tails and checksums */
 static inline void nova_update_inode(struct super_block *sb,
 	struct inode *inode, struct nova_inode *pi,
@@ -249,6 +264,7 @@ static inline void nova_update_inode(struct super_block *sb,
 	sih->log_tail = update->tail;
 	sih->alter_log_tail = update->alter_tail;
 	nova_update_tail(pi, update->tail);
+
 	if (metadata_csum)
 		nova_update_alter_tail(pi, update->alter_tail);
 
@@ -257,6 +273,26 @@ static inline void nova_update_inode(struct super_block *sb,
 		nova_update_alter_inode(sb, inode, pi);
 }
 
+/* Per-Core Log Version */
+/* Make different version to separate the workflow just for writing files */
+static inline void pnova_update_inode(struct super_block *sb,
+	struct inode *inode, struct nova_inode *pi,
+	struct nova_inode_update *update, int update_alter, struct local_log *my_local_log)
+{
+	struct nova_inode_info *si = NOVA_I(inode);
+	struct nova_inode_info_header *sih = &si->header;
+
+	my_local_log->tail = update->tail;
+	/* TODO: Need to make it persist! */
+//	pnova_update_tail(pi, update->tail);
+
+	if (metadata_csum)
+		nova_update_alter_tail(pi, update->alter_tail);
+
+	nova_update_inode_checksum(pi);
+	if (inode && update_alter)
+		nova_update_alter_inode(sb, inode, pi);
+}
 
 static inline
 struct inode_table *nova_get_inode_table(struct super_block *sb,

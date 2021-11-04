@@ -25,6 +25,11 @@
 
 #define	NOVA_SUPER_MAGIC	0x4E4F5641	/* NOVA */
 
+/* On: NUMA mode*/
+#define NUMA_NOVA
+/* On: Per Core Log mode*/
+#define PERCORE
+
 /*
  * The NOVA filesystem constants/structures
  */
