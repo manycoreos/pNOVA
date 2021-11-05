@@ -3,10 +3,10 @@
 ## Description
 NOVA is a state-of-the-art NVM file system, ensures higher throughput and lower read-write latency than block-based file systems. NOVA also ensures consistency of file data and metadata through its log- structured design. NOVA adopts per-inode logging which logs metadata for every write operation. However, NOVA does not provide any degree of scalability in terms of I/O throughput when concurrent shared file I/Os are performed. This is mainly due to the coarse-grained locks on inodes to guarantee consistency of its per-inode logs, which negates the benefits of concurrent nature of NOVA and high-performance NVM devices. also NOVA does not scale Non-Uniform Memory Access(NUMA) architecture. This is because NOVA is not designed for NUMA environment.
 
-Solving this scalability issue, pNOVA is a variant of NOVA that not only accelerates parallel writes and reads to the same file of multiple threads but also aware NUMA to show the scalability on NUMA manycore servers. The base of pNOVA is [NOVA][NOVA] v5.1 from NVSL. The technologies applied to pNOVA are as follows : 
+Solving this scalability issue, pNOVA is a variant of NOVA that not only accelerates parallel writes and reads to the same file of multiple threads but also awares NUMA to show the scalability on NUMA manycore servers. The base of pNOVA is [NOVA][NOVA] v5.1 from NVSL. The technologies applied to pNOVA are as follows : 
 
 ### Fine-grained range RW lock
-To solve this coarse-grained lock problem, we suggest a range-based reader-writer synchronization mechanism, which selectively blocks I/O operations only with overlapped ranges with lock holders,
+To solve this coarse-grained lock problem, we suggest a range-based reader-writer synchronization mechanism, which selectively blocks I/O operations only with overlapped ranges with lock holders
 
 ### Virtualizing NVM Devices
 In order to store files across multiple NUMA nodes, the non-contiguous physical address space of NVMs located at multiple nodes is virtualized into one logical address space. Applied a local first write policy to place file data and metadata preferentially on the NVM device allocated to the CPU where the thread is executing.
